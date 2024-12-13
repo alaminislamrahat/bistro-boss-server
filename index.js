@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const app = express();
+const jwt = require('jsonwebtoken');
 require('dotenv').config()
 const port = process.env.PORT || 5000;
 
@@ -31,26 +32,103 @@ async function run() {
         const cartsCollection = client.db("bistroDb").collection("carts");
 
 
+        // jwt related api
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+                expiresIn: '1h'
+            });
+            res.send({ token })
+        })
+
+        // jwt middleware 
+        const verifyToken = (req, res, next) => {
+            // console.log('inside middle ware', req.headers.authorization);
+            if (!req.headers.authorization) {
+                return res.status(401).send({ message: 'forbidden access' })
+            }
+            const token = req.headers.authorization.split(' ')[1];
+           jwt.verify(token,process.env.ACCESS_TOKEN_SECRET,(err, decoded) => {
+            if(err){
+                return res.status(401).send({ message: 'forbidden access' })
+            }
+            req.decoded = decoded;
+            next();
+           })
+        }
+
         // user related api 
+
+        app.get('/users', verifyToken, async (req, res) => {
+
+            const result = await usersCollection.find().toArray();
+            res.send(result)
+        });
+
+
+        app.get('/users/admin/:email',verifyToken, async(req,res) => {
+            const email = req.params.email;
+            if(email !== req.decoded.email){
+                return res.status(403).send({message : 'unauthorize access'})
+            };
+            const query = {email : email};
+            const user = await usersCollection.findOne(query);
+            let admin = false;
+            if(user){
+                admin =user?.role === 'admin'
+            }
+            res.send({admin})
+        })
+
+        app.delete('/user/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await usersCollection.deleteOne(query);
+            res.send(result);
+        });
+
+
+
         app.post('/users', async (req, res) => {
             const user = req.body;
+            // inser user if email doesn't exit
+            // you can cheak it many ways(1.email unique, 2. upsert, 3.simple way)
+            const query = { email: user.email }
+            const existingUser = await usersCollection.findOne(query)
+            if (existingUser) {
+                return res.send({ message: 'users already exist', insertedId: null })
+            }
             const result = await usersCollection.insertOne(user);
             res.send(result);
+        });
+
+        app.patch('/users/admin/:id', async (req, res) => {
+            const id = req.params.id;
+            console.log(id)
+            const filter = { _id: new ObjectId(id) };
+            const updateDoc = {
+                $set: {
+                    role: 'admin'
+                },
+            };
+            const result = await usersCollection.updateOne(filter, updateDoc);
+            res.send(result);
         })
-        app.get('/menu', async(req,res)=>{
+
+        app.get('/menu', async (req, res) => {
             const result = await menuCollection.find().toArray();
             res.send(result)
         })
-        app.get('/reviews', async(req,res)=>{
+        app.get('/reviews', async (req, res) => {
             const result = await reviewsCollection.find().toArray();
             res.send(result)
         })
-       
+
 
         // cart collections 
         app.get('/carts', async (req, res) => {
             const email = req.query.email;
-            const query = {email : email}
+            const query = { email: email }
             const result = await cartsCollection.find(query).toArray();
             res.send(result);
         })
@@ -63,7 +141,7 @@ async function run() {
 
         app.delete('/cart/:id', async (req, res) => {
             const id = req.params.id;
-            const query = {_id : new ObjectId(id)};
+            const query = { _id: new ObjectId(id) };
             const result = await cartsCollection.deleteOne(query);
             res.send(result);
         })
