@@ -45,31 +45,45 @@ async function run() {
         const verifyToken = (req, res, next) => {
             // console.log('inside middle ware', req.headers.authorization);
             if (!req.headers.authorization) {
-                return res.status(401).send({ message: 'forbidden access' })
+                return res.status(401).send({ message: 'unauthorize access' })
             }
             const token = req.headers.authorization.split(' ')[1];
            jwt.verify(token,process.env.ACCESS_TOKEN_SECRET,(err, decoded) => {
             if(err){
-                return res.status(401).send({ message: 'forbidden access' })
+                return res.status(401).send({ message: 'unauthorize access' })
             }
             req.decoded = decoded;
+            // console.log(decoded,'decoded',req.decoded ,'req decoded')
             next();
            })
         }
 
+
+        // verify admin is after verify admin
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = {email : email};
+            const user = await usersCollection.findOne(query);
+            const isAdmin = user?.role === 'admin';
+            if(!isAdmin){
+                return res.status(403).send({message : 'forbidden access'})
+            }
+            next();
+        }
+
         // user related api 
 
-        app.get('/users', verifyToken, async (req, res) => {
+        app.get('/users', verifyToken,verifyAdmin, async (req, res) => {
 
             const result = await usersCollection.find().toArray();
             res.send(result)
         });
 
 
-        app.get('/users/admin/:email',verifyToken, async(req,res) => {
+        app.get('/users/admin/:email',verifyToken,verifyAdmin, async(req,res) => {
             const email = req.params.email;
             if(email !== req.decoded.email){
-                return res.status(403).send({message : 'unauthorize access'})
+                return res.status(403).send({message : 'forbidden access'})
             };
             const query = {email : email};
             const user = await usersCollection.findOne(query);
@@ -80,7 +94,7 @@ async function run() {
             res.send({admin})
         })
 
-        app.delete('/user/:id', async (req, res) => {
+        app.delete('/user/:id', verifyToken,verifyAdmin,async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
             const result = await usersCollection.deleteOne(query);
@@ -89,7 +103,7 @@ async function run() {
 
 
 
-        app.post('/users', async (req, res) => {
+        app.post('/users',verifyToken, verifyAdmin, async (req, res) => {
             const user = req.body;
             // inser user if email doesn't exit
             // you can cheak it many ways(1.email unique, 2. upsert, 3.simple way)
