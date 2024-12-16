@@ -79,8 +79,9 @@ async function run() {
             res.send(result)
         });
 
+   
 
-        app.get('/users/admin/:email',verifyToken,verifyAdmin, async(req,res) => {
+        app.get('/users/admin/:email', verifyToken, async(req,res) => {
             const email = req.params.email;
             if(email !== req.decoded.email){
                 return res.status(403).send({message : 'forbidden access'})
@@ -93,17 +94,7 @@ async function run() {
             }
             res.send({admin})
         })
-
-        app.delete('/user/:id', verifyToken,verifyAdmin,async (req, res) => {
-            const id = req.params.id;
-            const query = { _id: new ObjectId(id) };
-            const result = await usersCollection.deleteOne(query);
-            res.send(result);
-        });
-
-
-
-        app.post('/users',verifyToken, verifyAdmin, async (req, res) => {
+        app.post('/users', async (req, res) => {
             const user = req.body;
             // inser user if email doesn't exit
             // you can cheak it many ways(1.email unique, 2. upsert, 3.simple way)
@@ -116,7 +107,18 @@ async function run() {
             res.send(result);
         });
 
-        app.patch('/users/admin/:id', async (req, res) => {
+        app.delete('/user/:id',verifyToken,verifyAdmin,async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await usersCollection.deleteOne(query);
+            res.send(result);
+        });
+
+
+
+    
+
+        app.patch('/users/admin/:id',verifyToken,verifyAdmin, async (req, res) => {
             const id = req.params.id;
             console.log(id)
             const filter = { _id: new ObjectId(id) };
@@ -129,10 +131,26 @@ async function run() {
             res.send(result);
         })
 
+        // menu related api
         app.get('/menu', async (req, res) => {
             const result = await menuCollection.find().toArray();
             res.send(result)
         })
+
+        app.post('/menu',verifyToken,verifyAdmin, async (req, res) => {
+            const menuItem = req.body;
+            const result = await menuCollection.insertOne(menuItem);
+            res.send(result);
+        });
+
+        app.delete('/menu/:id',verifyToken,verifyAdmin, async(req, res) => {
+            const id = req.params.id;
+            const query = {_id : new ObjectId(id)};
+            const result = await menuCollection.deleteOne(query);
+            res.send(result);
+        })
+
+        // rewiew related api
         app.get('/reviews', async (req, res) => {
             const result = await reviewsCollection.find().toArray();
             res.send(result)
