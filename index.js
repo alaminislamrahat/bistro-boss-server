@@ -204,16 +204,16 @@ async function run() {
 
         // payment adding
         app.post('/create-payment-intent', async (req, res) => {
-            const {price} = req.body;
+            const { price } = req.body;
             const amount = parseInt(price * 100);
             // console.log(amount,'inside server')
 
             const paymentIntent = await stripe.paymentIntents.create({
-                amount : amount,
+                amount: amount,
                 currency: "usd",
-                payment_method_types : ['card']
+                payment_method_types: ['card']
             });
-          
+
             res.send({
                 clientSecret: paymentIntent.client_secret,
             });
@@ -222,27 +222,96 @@ async function run() {
         app.post('/payment', async (req, res) => {
             const payment = req.body;
             const paymentResult = await paymentsCollection.insertOne(payment);
-           
+
 
             // carefully delete each item from the cart
-            console.log('payment',payment)
-            const query = {_id : {
-                $in: payment.cartIds.map(id => new ObjectId(id))
-            }}
+            console.log('payment', payment)
+            const query = {
+                _id: {
+                    $in: payment.cartIds.map(id => new ObjectId(id))
+                }
+            }
             const deleteResult = await cartsCollection.deleteMany(query)
-        res.send({paymentResult,deleteResult})
+            res.send({ paymentResult, deleteResult })
         })
 
 
-        app.get('/payment/:email',verifyToken, async(req, res) => {
-            const query = {email: req.params.email}
-            if(req.decoded.email !== req.params.email){
-                res.status(403).send({message:'access forbidden'})
+        app.get('/payment/:email', verifyToken, async (req, res) => {
+            const query = { email: req.params.email }
+            if (req.decoded.email !== req.params.email) {
+                res.status(403).send({ message: 'access forbidden' })
             }
 
             const result = await paymentsCollection.find(query).toArray();
             res.send(result);
         })
+
+
+
+        // stats or analytics
+
+        app.get('/admin-stats', async (req, res) => {
+            const users = await usersCollection.estimatedDocumentCount();
+            const menuItems = await menuCollection.estimatedDocumentCount();
+            const orders = await paymentsCollection.estimatedDocumentCount();
+
+            const result = await paymentsCollection.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: {
+                            $sum: '$price'
+                        }
+                    }
+                },
+            ]).toArray();
+            const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+
+            res.send({ users, menuItems, orders, revenue })
+        })
+
+
+
+        // using aggregate ppypeline admin home
+
+        app.get('/order-stats',verifyToken,verifyAdmin, async (req, res) => {
+            const result = await paymentsCollection.aggregate([
+                {
+                    $unwind: '$menuItemIds'
+                },
+                {
+                    $lookup: {
+                        from: 'menu',
+                        localField: 'menuItemIds',
+                        foreignField: '_id',
+                        as: 'menuItems'
+                    }
+                },
+                {
+                    $unwind: '$menuItems'
+                },
+                {
+                    $group: {
+                        _id: '$menuItems.category',
+                        quantity : {$sum : 1},
+                        revenue : {$sum : '$menuItems.price'}
+
+                    }
+                },
+                {
+                    $project : {
+                        _id : 0,
+                        category : '$_id',
+                        quantity : '$quantity',
+                        revenue : '$revenue'
+                    }
+                }
+
+            ]).toArray();
+
+            res.send(result);
+        })
+
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
